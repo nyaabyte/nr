@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This is machine digestible. -->
+<!-- NRTF Format Grammar (structure) -->
+<protocol name="nrtf_format" version="1">
+  <description>
+    NRTF textual frame structure and self-canonical signing rules (no JSON projection).
+  </description>
+  <types>
+    <type name="api" base="int"/>
+    <type name="schema" base="int"/>
+    <type name="route" base="string"/>
+    <type name="resource_id" base="string"/>
+    <type name="timestamp" base="string" format="RFC3339"/>
+    <type name="nonce128" base="string" pattern="hex" length="32" note="128-bit random value as 32 hex chars"/>
+  <type name="cap_list" base="string" note="List form capabilities e.g. capabilities:[a b]"/>
+    <type name="sigalg" base="string"/>
+    <type name="public_key" base="string" encoding="base64"/>
+    <type name="signature" base="string" encoding="base64"/>
+  <type name="table" base="string" note="Canonical ordered key/value table"/>
+  <type name="list" base="string" note="Canonical ordered list :[ ... ]"/>
+  </types>
+  <frame name="generic_message">
+    <header>
+      <field name="api" type="api" required="true"/>
+      <field name="schema" type="schema" required="true"/>
+      <field name="id" type="route" required="true"/>
+      <field name="resource" type="resource_id" required="false"/>
+      <field name="ts" type="timestamp" required="true"/>
+      <field name="nonce" type="nonce128" required="true"/>
+  <field name="cap" type="cap_list" required="false"/>
+      <field name="sigalg" type="sigalg" required="true"/>
+      <field name="pub" type="public_key" required="true"/>
+      <field name="sig" type="signature" required="true"/>
+    </header>
+    <body>
+      <alt>
+        <option name="msg" type="table"/>
+        <option name="error" type="table" note="error object with scope/path/code/message"/>
+      </alt>
+    </body>
+    <canonicalization>
+      <rule>Sort table keys alphabetically (UTF-8 bytes) before signing.</rule>
+      <rule>Lists preserve source order. Do not sort.</rule>
+      <rule>Exclude sig line from signature payload.</rule>
+      <rule>Single space separators. No trailing whitespace.</rule>
+      <rule>Strings escape quotes, backslashes, control chars via \xHH.</rule>
+      <rule>Integers base-10. Floats minimal decimal (no scientific notation).</rule>
+      <rule>Literal none represents null/absence.</rule>
+    </canonicalization>
+  </frame>
+  <notes>
+    <note>Frames may be delimited by double newline in streaming contexts.</note>
+    <note>Whitespace outside quoted strings is insignificant.</note>
+    <note>Replay detection uses (nonce, ts, pub) tuple.</note>
+    <note>Chunked transfer uses additional extension headers (e.g. chunk meta :{ index 0 total 5 ... }).</note>
+    <note>Generic data transport routes support content storage, search, caching, and user data management.</note>
+    <note>Data visibility controls access: public (network-wide), private (owner only), restricted (custom ACL).</note>
+    <note>Search indexes maintained distributedly across instances for federated query processing.</note>
+    <note>Cache coordination optimizes data distribution and access performance across the network.</note>
+  </notes>
+</protocol>

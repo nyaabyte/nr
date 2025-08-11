@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This is machine digestible. -->
+<!--
+  NR Network Protocol (aggregated view)
+  This file references cross-role messages. Concrete role-specific subsets
+  are defined in identity/PROTOCOL.xml and instance/PROTOCOL.xml.
+-->
+<protocol name="nr_net" version="1">
+  <description>
+    Core cross-role messages: registration, broadcasts, challenges, evidence, consensus, key
+    rotation, recursion, heartbeats.
+  </description>
+
+  <types>
+    <type name="string" base="string" />
+    <type name="int" base="int" />
+    <type name="float" base="float" />
+    <type name="bool" base="int" semantics="0=false,1=true" />
+    <type name="none" base="void" />
+    <type name="uuid7" base="string" pattern="UUIDv7" />
+    <type name="fingerprint" base="string" pattern="hex" length="64" />
+    <type name="time" base="string" format="RFC3339" />
+    <type name="nonce128" base="string" pattern="hex" length="32"
+      note="128-bit random value as 32 hex chars" />
+    <type name="bytes_b64" base="string" encoding="base64" />
+    <type name="json" base="string" note="UTF-8 JSON encoded" />
+    <type name="table" base="json" note="Structured object mapped from NRTF table" />
+  </types>
+
+  <enums>
+    <enum name="consensus_decision">
+      <entry name="GUILTY" value="1" />
+      <entry name="NOT_GUILTY" value="2" />
+      <entry name="ABSTAIN" value="3" />
+    </enum>
+    <enum name="target_type">
+      <entry name="instance" value="1" />
+      <entry name="server" value="2" />
+    </enum>
+    <enum name="voter_type">
+      <entry name="instance" value="1" />
+      <entry name="server" value="2" />
+    </enum>
+  </enums>
+
+  <structs>
+    <struct name="RegistrationEnvelope">
+      <member name="instance_id" type="uuid7" />
+      <member name="instance_url" type="string" />
+      <member name="api_version" type="int" />
+      <member name="nrtf_schema_version" type="int" />
+      <member name="timestamp" type="time" />
+      <member name="nonce" type="nonce128" />
+      <member name="capabilities" type="table" optional="true" />
+      <member name="connected_identity_servers" type="table" />
+      <member name="public_key" type="bytes_b64" />
+      <member name="transport_sig_alg" type="string" />
+      <member name="proof_of_possession_signature" type="bytes_b64" />
+    </struct>
+  </structs>
+
+  <interface name="identity_server" version="1">
+    <description>Messages an Identity Server receives (requests) and emits (events).</description>
+    <request name="register_instance">
+      <arg name="envelope" type="RegistrationEnvelope" />
+    </request>
+    <event name="registration_broadcast">
+      <arg name="registration" type="RegistrationEnvelope" />
+      <arg name="instance_public_key_fingerprint" type="fingerprint" />
+      <arg name="server_id" type="fingerprint" />
+      <arg name="server_public_key" type="bytes_b64" />
+      <arg name="server_timestamp" type="time" />
+      <arg name="server_observation_id" type="uuid7" />
+      <arg name="previous_ledger_hash" type="fingerprint" optional="true" />
+      <arg name="server_signature" type="bytes_b64" />
+    </event>
+    <request name="reachability_challenge">
+      <arg name="instance_id" type="uuid7" />
+      <arg name="challenge_nonce" type="nonce128" />
+      <arg name="expected_signature_alg" type="string" />
+    </request>
+    <event name="reachability_response">
+      <arg name="instance_id" type="uuid7" />
+      <arg name="challenge_nonce" type="nonce128" />
+      <arg name="timestamp" type="time" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="evidence_request">
+      <arg name="instance_id" type="uuid7" />
+      <arg name="requestor_id" type="uuid7" />
+      <arg name="message_uuids" type="table" />
+    </request>
+    <event name="evidence_response">
+      <arg name="instance_id" type="uuid7" />
+      <arg name="message_existence" type="table" />
+      <arg name="message_hashes" type="table" />
+      <arg name="current_api_version" type="int" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <event name="sin_report_instance">
+      <arg name="instance_id" type="uuid7" />
+      <arg name="offending_message_uuids" type="table" />
+      <arg name="original_message_content_hash" type="fingerprint" />
+      <arg name="original_instance_signature" type="bytes_b64" />
+      <arg name="server_signature" type="bytes_b64" />
+      <arg name="observed_api_version" type="int" />
+      <arg name="observed_schema_version" type="int" />
+      <arg name="server_timestamp" type="time" />
+      <arg name="integrity_hash" type="fingerprint" />
+    </event>
+    <event name="server_sin_report">
+      <arg name="server_id" type="fingerprint" />
+      <arg name="verified_message_signature" type="bytes_b64" />
+      <arg name="offending_server_message_uuid" type="uuid7" />
+      <arg name="victim_instance_message_uuid" type="uuid7" optional="true" />
+      <arg name="cached_server_public_key" type="bytes_b64" />
+      <arg name="victim_instance_public_key" type="bytes_b64" optional="true" />
+      <arg name="offending_message_content_hash" type="fingerprint" />
+      <arg name="local_network_identity_list_root" type="fingerprint" />
+      <arg name="server_view_root" type="fingerprint" />
+      <arg name="divergence_proof" type="table" />
+      <arg name="instance_signature" type="bytes_b64" />
+    </event>
+    <event name="consensus_poll">
+      <arg name="target_type" type="target_type" />
+      <arg name="target_id" type="uuid7" />
+      <arg name="evidence_hash" type="fingerprint" />
+      <arg name="poll_id" type="uuid7" />
+      <arg name="expires_at" type="time" />
+    </event>
+    <request name="consensus_vote">
+      <arg name="poll_id" type="uuid7" />
+      <arg name="voter_type" type="voter_type" />
+      <arg name="voter_id" type="uuid7" />
+      <arg name="decision" type="consensus_decision" />
+      <arg name="signature" type="bytes_b64" />
+    </request>
+    <event name="server_delist_notice">
+      <arg name="server_id" type="fingerprint" />
+      <arg name="poll_id" type="uuid7" />
+      <arg name="decision" type="consensus_decision" />
+      <arg name="aggregate_signatures" type="table" />
+      <arg name="timestamp" type="time" />
+    </event>
+    <request name="rotate_key">
+      <arg name="subject_type" type="string" />
+      <arg name="subject_id" type="uuid7" />
+      <arg name="old_public_key" type="bytes_b64" />
+      <arg name="new_public_key" type="bytes_b64" />
+      <arg name="rotation_timestamp" type="time" />
+      <arg name="old_key_signature" type="bytes_b64" />
+      <arg name="new_key_signature" type="bytes_b64" optional="true" />
+    </request>
+    <event name="signed_heartbeat">
+      <arg name="subject_type" type="string" />
+      <arg name="subject_id" type="uuid7" />
+      <arg name="last_seen_ts" type="time" />
+      <arg name="state_hash" type="fingerprint" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="recurse_identities">
+      <arg name="traversal_id" type="uuid7" />
+      <arg name="depth" type="int" />
+      <arg name="visited" type="table" />
+    </request>
+    <event name="recurse_identities_response">
+      <arg name="traversal_id" type="uuid7" />
+      <arg name="server_public_key" type="bytes_b64" />
+      <arg name="signed_instance_list" type="table" />
+      <arg name="signed_peer_identity_servers" type="table" />
+      <arg name="response_timestamp" type="time" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <event name="server_migration_announce">
+      <arg name="migration_id" type="uuid7" />
+      <arg name="old_server_id" type="fingerprint" />
+      <arg name="new_server_public_key" type="bytes_b64" />
+      <arg name="new_server_endpoints" type="table" />
+      <arg name="planned_cutover" type="time" />
+      <arg name="old_server_signature" type="bytes_b64" />
+      <arg name="quorum_attestations" type="table" optional="true" />
+    </event>
+    <event name="server_migration_commit">
+      <arg name="migration_id" type="uuid7" />
+      <arg name="old_server_id" type="fingerprint" />
+      <arg name="new_server_id" type="fingerprint" />
+      <arg name="cutover_timestamp" type="time" />
+      <arg name="final_state_root" type="fingerprint" />
+      <arg name="new_server_signature" type="bytes_b64" />
+      <arg name="old_server_signature" type="bytes_b64" />
+    </event>
+    <request name="instance_migration_request">
+      <arg name="migration_id" type="uuid7" />
+      <arg name="old_instance_id" type="uuid7" />
+      <arg name="new_instance_id" type="uuid7" />
+      <arg name="new_instance_url" type="string" />
+      <arg name="old_public_key" type="bytes_b64" />
+      <arg name="new_public_key" type="bytes_b64" />
+      <arg name="request_timestamp" type="time" />
+      <arg name="old_instance_signature" type="bytes_b64" />
+    </request>
+    <event name="instance_migration_approved">
+      <arg name="migration_id" type="uuid7" />
+      <arg name="old_instance_id" type="uuid7" />
+      <arg name="new_instance_id" type="uuid7" />
+      <arg name="approval_timestamp" type="time" />
+      <arg name="server_id" type="fingerprint" />
+      <arg name="server_signature" type="bytes_b64" />
+    </event>
+    <event name="instance_migration_notice">
+      <arg name="migration_id" type="uuid7" />
+      <arg name="old_instance_id" type="uuid7" />
+      <arg name="new_instance_id" type="uuid7" />
+      <arg name="alias_expires_at" type="time" />
+      <arg name="server_id" type="fingerprint" />
+      <arg name="server_signature" type="bytes_b64" />
+    </event>
+    <event name="alias_map_update">
+      <arg name="alias_set_hash" type="fingerprint" />
+      <arg name="active_aliases" type="table" />
+      <arg name="server_id" type="fingerprint" />
+      <arg name="timestamp" type="time" />
+      <arg name="server_signature" type="bytes_b64" />
+    </event>
+    <!-- Generic Data Transport Events -->
+    <request name="data_store">
+      <arg name="data_id" type="string" />
+      <arg name="content_type" type="string" />
+      <arg name="visibility" type="string" />
+      <arg name="data" type="table" />
+      <arg name="signature" type="bytes_b64" />
+    </request>
+    <event name="data_store_response">
+      <arg name="data_id" type="string" />
+      <arg name="stored_at" type="time" />
+      <arg name="instance_id" type="uuid7" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="data_retrieve">
+      <arg name="data_id" type="string" />
+      <arg name="requestor_id" type="string" />
+      <arg name="access_token" type="bytes_b64" />
+    </request>
+    <event name="data_retrieve_response">
+      <arg name="data_id" type="string" />
+      <arg name="content_type" type="string" />
+      <arg name="data" type="table" />
+      <arg name="cached_at" type="time" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="search_query">
+      <arg name="query" type="string" />
+      <arg name="filters" type="table" />
+      <arg name="limit" type="int" />
+      <arg name="offset" type="int" />
+      <arg name="requestor_id" type="string" />
+    </request>
+    <event name="search_query_response">
+      <arg name="results" type="table" />
+      <arg name="total_count" type="int" />
+      <arg name="query_id" type="uuid7" />
+      <arg name="cached_at" type="time" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <event name="search_index_update">
+      <arg name="data_id" type="string" />
+      <arg name="keywords" type="table" />
+      <arg name="metadata" type="table" />
+      <arg name="instance_id" type="uuid7" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="user_data_store">
+      <arg name="user_id" type="string" />
+      <arg name="data_key" type="string" />
+      <arg name="data_value" type="table" />
+      <arg name="visibility" type="string" />
+      <arg name="signature" type="bytes_b64" />
+    </request>
+    <event name="user_data_retrieve_response">
+      <arg name="user_id" type="string" />
+      <arg name="data_key" type="string" />
+      <arg name="data_value" type="table" />
+      <arg name="retrieved_at" type="time" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+    <request name="federation_sync">
+      <arg name="last_sync_timestamp" type="time" />
+      <arg name="filter_types" type="table" />
+      <arg name="requestor_instance_id" type="uuid7" />
+    </request>
+    <event name="federation_sync_response">
+      <arg name="updates" type="table" />
+      <arg name="sync_timestamp" type="time" />
+      <arg name="next_page_token" type="string" />
+      <arg name="signature" type="bytes_b64" />
+    </event>
+  </interface>
+</protocol>

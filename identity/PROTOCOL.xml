@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This is machine digestible. -->
+<!-- Identity Server specific interface -->
+<protocol name="nr_identity" version="1">
+  <include name="../net/PROTOCOL.xml" />
+  <description>Identity Server role-specific requests/events.</description>
+  <interface name="identity_server" version="1">
+    <request name="register_instance" since="1" />
+    <request name="reachability_challenge" />
+    <request name="evidence_request" />
+    <request name="consensus_vote" />
+    <request name="rotate_key" />
+    <request name="recurse_identities" />
+    <request name="instance_migration_request" />
+    <event name="registration_broadcast" />
+    <event name="reachability_response" />
+    <event name="evidence_response" />
+    <event name="sin_report_instance" />
+    <event name="server_sin_report" />
+    <event name="consensus_poll" />
+    <event name="server_delist_notice" />
+    <event name="signed_heartbeat" />
+    <event name="recurse_identities_response" />
+    <event name="server_migration_announce" />
+    <event name="server_migration_commit" />
+    <event name="instance_migration_approved" />
+    <event name="instance_migration_notice" />
+    <event name="alias_map_update" />
+    <!-- Generic Data Transport Operations -->
+    <request name="search_query" />
+    <request name="federation_sync" />
+    <event name="search_index_update" />
+    <event name="federation_sync_response" />
+  </interface>
+</protocol>

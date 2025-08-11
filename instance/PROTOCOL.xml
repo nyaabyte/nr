@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This is machine digestible. -->
+<!-- Instance specific interface -->
+<protocol name="nr_instance" version="1">
+  <include name="../net/PROTOCOL.xml" />
+  <description>Instance role: issues registration and votes, receives broadcasts and polls.</description>
+  <interface name="instance" version="1">
+    <request name="register_instance" />
+    <request name="send_reachability_response" />
+    <request name="submit_server_sin_report" />
+    <request name="consensus_vote" />
+    <request name="rotate_key" />
+    <request name="instance_migration_request" />
+    <event name="registration_broadcast" />
+    <event name="reachability_challenge" />
+    <event name="consensus_poll" />
+    <event name="server_delist_notice" />
+    <event name="sin_report_instance" />
+    <event name="server_sin_report" />
+    <event name="server_migration_announce" />
+    <event name="server_migration_commit" />
+    <event name="instance_migration_approved" />
+    <event name="instance_migration_notice" />
+    <event name="alias_map_update" />
+    <request name="data_store" />
+    <request name="data_retrieve" />
+    <request name="data_delete" />
+    <request name="search_query" />
+    <request name="user_data_store" />
+    <request name="user_data_retrieve" />
+    <request name="federation_sync" />
+    <event name="data_store_response" />
+    <event name="data_retrieve_response" />
+    <event name="search_query_response" />
+    <event name="search_index_update" />
+    <event name="user_data_retrieve_response" />
+    <event name="federation_sync_response" />
+  </interface>
+</protocol>
