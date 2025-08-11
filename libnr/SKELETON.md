@@ -1,5 +1,32 @@
+# Skeletons
 
-# Instance/Identity Server Skeleton
+## NRTF
+
+```rust
+struct NRTFFrame {
+    pub instance_id: Uuid7,
+    pub timestamp: Timestamp,
+    pub nonce: Nonce,
+    pub data: Table,
+}
+
+struct NRTFError {
+    pub code: u32,
+    pub message: String,
+}
+
+struct NRTFResult {
+    pub frame: NRTFFrame,
+    pub error: Option<NRTFError>,
+}
+```
+
+## Crypto, Types
+
+Crypto and types are wrapped re-exports of existing UUID, timestamp, text nonces, PGP libraries and signatures.  
+Though it increases bloat significantly, it provides a consistent and unified interface for working with components necessary for the Net to function.
+
+## Instance/Identity Server Skeleton
 
 ```rust
 use libnr::nrtf::{NRTFFrame, NRTFResult};
@@ -21,6 +48,29 @@ pub struct Delta {
     pub id: String,
     pub changed_at: Timestamp,
     pub data: Table,
+    pub schema_provider: Option<String>,
+    pub schema_version: Option<u32>,
+}
+
+pub struct SchemaProvider {
+    pub name: String,
+    pub version: u32,
+    pub supported_operations: Vec<String>,
+}
+
+pub struct NodeCapabilities {
+    pub basic_capabilities: Table,
+    pub supported_schema_providers: Vec<SchemaProvider>,
+    pub instance_type: Option<String>,
+}
+
+pub struct DataWithSchema {
+    pub data_id: String,
+    pub content_type: String,
+    pub visibility: Visibility,
+    pub schema_provider: String,
+    pub schema_version: u32,
+    pub data: Table,
 }
 
 // Registration envelope (see spec)
@@ -32,6 +82,7 @@ pub struct RegistrationEnvelope {
     pub timestamp: Timestamp,
     pub nonce: Nonce,
     pub capabilities: Option<Table>,
+    pub supported_schema_providers: Vec<String>,
     pub connected_identity_servers: Table,
     pub public_key: PublicKey,
     pub transport_sig_alg: String,
@@ -57,13 +108,18 @@ pub trait Instance {
     fn register(&self, identity_server_url: &str, envelope: &RegistrationEnvelope, auth: &AuthContext) -> NRTFResult;
     fn send_heartbeat(&self, auth: &AuthContext) -> NRTFResult;
 
-    // Data
-    fn store_data(&self, data: Table, visibility: Visibility, auth: &AuthContext) -> NRTFResult;
-    fn retrieve_data(&self, id: &str, auth: &AuthContext) -> NRTFResult<Table>;
+    // Capabilities
+    fn get_capabilities(&self, capabilities_type: &str, auth: &AuthContext) -> NRTFResult<NodeCapabilities>;
+    fn supports_schema_provider(&self, schema_provider: &str) -> bool;
+    fn get_supported_operations(&self, schema_provider: &str) -> Vec<String>;
+
+    // Data with schema compliance
+    fn store_data(&self, data: DataWithSchema, auth: &AuthContext) -> NRTFResult;
+    fn retrieve_data(&self, id: &str, supported_schemas: &[String], auth: &AuthContext) -> NRTFResult<DataWithSchema>;
     fn delete_data(&self, id: &str, auth: &AuthContext) -> NRTFResult;
 
-    // Search and index
-    fn search(&self, query: &str, auth: &AuthContext) -> NRTFResult<Vec<Table>>;
+    // Schema-aware search and index
+    fn search(&self, query: &str, schema_filter: Option<&[String]>, auth: &AuthContext) -> NRTFResult<Vec<Table>>;
     fn update_search_index(&self, delta: &Delta, auth: &AuthContext) -> NRTFResult;
 
     // Cache
@@ -75,8 +131,8 @@ pub trait Instance {
     fn user_data_retrieve(&self, user_id: &str, key: &str, auth: &AuthContext) -> NRTFResult<Option<String>>;
     fn get_user_profile(&self, user_id: &str, auth: &AuthContext) -> NRTFResult<Table>;
 
-    // Federation
-    fn federation_sync(&self, since: Timestamp, auth: &AuthContext) -> NRTFResult<Vec<Delta>>;
+    // Federation with schema filtering
+    fn federation_sync(&self, since: Timestamp, schema_filter: Option<&[String]>, auth: &AuthContext) -> NRTFResult<Vec<Delta>>;
     fn federation_announce(&self, deltas: &[Delta], auth: &AuthContext) -> NRTFResult;
 
     // Migration
@@ -98,7 +154,12 @@ pub trait IdentityServer {
     fn broadcast_registration(&self, envelope: &RegistrationEnvelope, auth: &AuthContext) -> NRTFResult;
     fn challenge_reachability(&self, instance_id: &Uuid7, auth: &AuthContext) -> NRTFResult;
 
-    // Data/search/federation
+    // Capabilities
+    fn get_capabilities(&self, capabilities_type: &str, auth: &AuthContext) -> NRTFResult<NodeCapabilities>;
+    fn supports_schema_provider(&self, schema_provider: &str) -> bool;
+    fn validate_schema_compliance(&self, frame: &NRTFFrame) -> bool;
+
+    // Data/search/federation with schema compliance
     fn handle_search_query(&self, frame: &NRTFFrame) -> NRTFResult;
     fn handle_federation_sync(&self, frame: &NRTFFrame) -> NRTFResult;
     fn handle_federation_announce(&self, deltas: &[Delta], auth: &AuthContext) -> NRTFResult;
@@ -122,17 +183,18 @@ pub trait IdentityServer {
 fn handle_nrtf_frame(frame: &NRTFFrame) {
     match frame.route() {
         "register/instance" => {/* Handle registration */},
-        "data/store" => {/* Handle data store */},
-        "data/retrieve" => {/* Handle data retrieve */},
+        "capabilities/request" => {/* Handle capabilities request */},
+        "data/store" => {/* Handle data store with schema compliance */},
+        "data/retrieve" => {/* Handle data retrieve with schema compliance */},
         "data/delete" => {/* Handle data delete */},
-        "search/query" => {/* Handle search */},
+        "search/query" => {/* Handle search with schema filtering */},
         "search/index" => {/* Handle index update */},
         "cache/request" => {/* Handle cache hint */},
         "cache/response" => {/* Handle cache status */},
         "user/data/store" => {/* Handle user data store */},
         "user/data/retrieve" => {/* Handle user data retrieve */},
         "user/profile/get" => {/* Handle user profile */},
-        "federation/sync" => {/* Handle federation sync */},
+        "federation/sync" => {/* Handle federation sync with schema filtering */},
         "federation/announce" => {/* Handle federation announce */},
         "migration/instance/request" => {/* Handle migration request */},
         "migration/instance/approve" => {/* Handle migration approve */},

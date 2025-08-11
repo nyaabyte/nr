@@ -2,7 +2,7 @@
 
 **Federal law is NoReplacement for parenting.**
 
-NoReplacement (`NR`) is a general-purpose decentralized network that aims to be extremely resistant to tampering, snooping and censorship through comprehensive **generic data transport** capabilities.
+NoReplacement (`NR`) is a general-purpose decentralized network that aims to be extremely resistant to tampering, snooping and censorship through comprehensive generic data transport capabilities.  
 
 The network provides a complete platform for storing, searching, caching, and distributing arbitrary data while maintaining strong security, access control, and consistency guarantees. Registration, Instance/Identity Server deletion, and data transport coordination are handled between Instances (servers that serve data to users) and Identity Servers (servers that serve instance identities, authentication, and data coordination to other Instances and Servers).
 
@@ -16,7 +16,7 @@ See [Net](net/SPEC.md) to begin your implementation.
 
 - If you are developing a NoReplacement NRTF parser or attempting to convert JSON to NRTF, you may want to view:
   - [NRTF](nrtf/SPEC.md)
-  - [NRTF as a JSON Replacement](nrtf/SPEC.md#json)
+  - [NRTF as a JSON Replacement](nrtf/SPEC.md#nrtf-as-a-json-replacement)
 
 - If you are developing a NoReplacement Identity Server or general-purpose implementation, you may want to view:
   - [Identity Server](identity/SPEC.md)

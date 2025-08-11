@@ -13,7 +13,8 @@ The Instance is an Internet-facing node that:
 6. Optional generic data store (public, private, restricted).
 7. Simple search and index broadcast (public docs).
 8. Optional cache hints (advisory only).
-9. User data/profile (scoped, migrates with user).
+9. User data/profile information and transmission (scoped, migrates with user).
+    - If you do not want to use users and/or are just storing or communicating real-time information, consider using one root user who will store (short) data via profile information or generic storage.
 10. Federation sync via timestamp deltas.
 
 Prefix all REST endpoints with `/net/inst/` for consistency. Control plane can also use NRTF routes directly over a persistent connection.
@@ -73,7 +74,16 @@ All signed control data is canonically represented as NRTF. JSON examples in thi
     {"type":"StreamingServer","v":1}
     ```
 
-8. GET `/net/inst/migration/aliases` (nrtf_route: `migration/aliases/update`)
+8. GET `/net/inst/capabilities` (nrtf_route: `capabilities/request`)
+    - Returns instance capabilities and supported schema providers.
+    - Query params: `type` (optional filter: node|schema_providers|all)
+    - Response JSON (sample):
+
+    ```json
+    {"node_capabilities":{"stream":true,"search":true},"supported_schema_providers":["StreamingServer/1","ChatServer/2"],"schema_compliance_matrix":{"StreamingServer/1":["store","retrieve","search"],"ChatServer/2":["store","retrieve"]}}
+    ```
+
+9. GET `/net/inst/migration/aliases` (nrtf_route: `migration/aliases/update`)
     - Fetch current alias mappings (old_id → new_id) for servers and instances.
     - Use to update local caches during migration windows.
 
@@ -82,19 +92,19 @@ All signed control data is canonically represented as NRTF. JSON examples in thi
 <!-- END -->
 
 <!-- condensed endpoint descriptions below moved to list -->
-9. POST `/net/inst/data/store` (data/store) – store public/private structured table.
-10. GET `/net/inst/data/retrieve/:id` (data/retrieve) – fetch (enforce visibility).
-11. DELETE `/net/inst/data/delete/:id` (data/delete) – owner/admin only.
-12. POST `/net/inst/search/query` (search/query) – simple keyword/filter search.
-13. POST `/net/inst/search/index` (search/index) – broadcast index delta.
-14. POST `/net/inst/cache/request` (cache/request) – optional cache hint.
-15. GET `/net/inst/cache/status/:id` (cache/response) – local/known cache info.
-16. POST `/net/inst/user/data/store` (user/data/store) – scoped user key/value.
-17. GET `/net/inst/user/data/:uid/:key` (user/data/retrieve) – retrieve if allowed.
-18. GET `/net/inst/user/profile/:uid` (user/profile/get) – profile subset.
-19. POST `/net/inst/federation/sync` (federation/sync) – pull/push deltas since ts.
+10. POST `/net/inst/data/store` (data/store) – store public/private structured table with schema compliance.
+11. GET `/net/inst/data/retrieve/:id` (data/retrieve) – fetch (enforce visibility and schema compliance).
+12. DELETE `/net/inst/data/delete/:id` (data/delete) – owner/admin only.
+13. POST `/net/inst/search/query` (search/query) – simple keyword/filter search.
+14. POST `/net/inst/search/index` (search/index) – broadcast index delta.
+15. POST `/net/inst/cache/request` (cache/request) – optional cache hint.
+16. GET `/net/inst/cache/status/:id` (cache/response) – local/known cache info.
+17. POST `/net/inst/user/data/store` (user/data/store) – scoped user key/value.
+18. GET `/net/inst/user/data/:uid/:key` (user/data/retrieve) – retrieve if allowed.
+19. GET `/net/inst/user/profile/:uid` (user/profile/get) – profile subset.
+20. POST `/net/inst/federation/sync` (federation/sync) – pull/push deltas since ts.
 
-20. - `/*`
+21. - `/*`
     - Define any other routes that may be requested from other peer Instances to this Instance.
     - As NoReplacement is only a network, this is the Wild Wild West and validation/type checking will be handled by the Instance's defined type and the content of the request/response body.
     - It is recommended that you communicate over NRTF for all inter-instance communication and use proper signatures (your Instance's public key, etc).
@@ -107,6 +117,7 @@ All signed control data is canonically represented as NRTF. JSON examples in thi
 | GET /net/inst/view                | view/request             | Server→Instance   | Cached view          |
 | POST /net/inst/register           | register/instance        | Instance→Server   | RegistrationEnvelope |
 | POST /net/inst/evidence/response  | evidence/response        | Instance→Server   | Evidence submission  |
+| GET /net/inst/capabilities        | capabilities/request     | Any→Instance      | Capabilities inquiry |
 | GET /net/inst/migration/aliases   | migration/aliases/update | Server→Instance   | Alias map snapshot   |
 | POST /net/inst/data/store         | data/store               | Client→Instance   | Data storage         |
 | GET /net/inst/data/retrieve/:id   | data/retrieve            | Client→Instance   | Data retrieval       |
@@ -176,7 +187,21 @@ nonce aabbccddeeff00112233445566778899
 sigalg ed25519
 pub base64:inst...
 sig base64:...
-msg :{ data_id "doc-1" visibility "public" content_type "text/plain" data :{ title "Hi" body "World" } }
+msg :{ data_id "doc-1" visibility "public" content_type "text/plain" schema_provider "StreamingServer/1" schema_version 1 data :{ title "Hi" body "World" } }
+```
+
+Schema compliance check example:
+
+```txt
+api 1
+schema 1
+id capabilities/request req-1
+ts 2025-08-11T12:35:00Z
+nonce bbccddeeaaffbb1122334455667788aa
+sigalg ed25519
+pub base64:client...
+sig base64:...
+msg :{ requestor_id "client123" capabilities_type "schema_providers" }
 ```
 
 ## Local Data Structures (For Implementations)
@@ -202,12 +227,13 @@ msg :{ data_id "doc-1" visibility "public" content_type "text/plain" data :{ tit
 
 ## Data Operations
 
-Store: validate and sign, index if public.  
-Retrieve: enforce visibility, return data or NOT_FOUND.  
+Store: validate schema compliance first, then validate and sign, index if public.  
+Retrieve: enforce visibility and schema compliance, return data or NOT_FOUND.  
 Delete: owner signature required.  
-Search: local match and optional federation.  
-Sync: send/receive list of (data_id, ts, hash).  
-User data: per (user_id, key) with visibility.
+Search: local match and optional federation (only for supported schemas).  
+Sync: send/receive list of (data_id, ts, hash) filtered by schema support.  
+User data: per (user_id, key) with visibility.  
+Schema compliance: Before processing any data operation, check if the `schema_provider` is in the node's supported list. If not supported, forward the request through federation without processing the content. This ensures network connectivity while maintaining type safety.
 
 ## Security Notes
 

@@ -17,7 +17,7 @@ The Identity Server is an Internet-facing node that:
 10. Handles basic federation sync and catalog queries.
 11. Optional lightweight data discovery.
 
-The Identity Server keeps the authoritative (quorum-confirmed) list of Instances and peer Identity Servers. It validates registrations, gossips broadcasts, challenges reachability, coordinates consensus (delisting, server misbehavior, etc.), and **facilitates the generic data transport layer** that enables searching, caching, and storing of arbitrary data across the network.
+The Identity Server keeps the authoritative (quorum-confirmed) list of Instances and peer Identity Servers. It validates registrations, gossips broadcasts, challenges reachability, coordinates consensus (delisting, server misbehavior, etc.), and facilitates the generic data transport layer that enables searching, caching, and storing of arbitrary data across the network.
 
 Transport: HTTPS (TLS, see [Net Flow](../net/SPEC.md#flow)). Control routes use NRTF frames as the sole signed canonical format (REST JSON forms are translation conveniences only). Prefix all REST endpoints with `/net/id/`.
 
@@ -107,16 +107,25 @@ Each REST endpoint has an equivalent NRTF route (shown in `nrtf_route`). Clients
 16. GET `/net/id/migration/aliases` (nrtf_route: `migration/aliases/update`)
     - Returns current alias map (old_id → new_id) and hash.
 
+17. GET `/net/id/capabilities` (nrtf_route: `capabilities/request`)
+    - Returns server capabilities and supported schema providers.
+    - Query params: `type` (optional filter: node|schema_providers|all)
+    - Response JSON (sample):
+
+      ```json
+      {"node_capabilities":{"stream":true,"search":true},"supported_schema_providers":["StreamingServer/1","ChatServer/2"],"schema_compliance_matrix":{"StreamingServer/1":["store","retrieve","search"],"ChatServer/2":["store","retrieve"]}}
+      ```
+
 <!-- COMMENT -->
 ### Generic Data Transport Endpoints
 <!-- END -->
 
-17. POST `/net/id/search/global` (search/query) – network search (public scope).
-18. POST `/net/id/search/index/sync` (search/index) – index delta ingest.
-19. GET `/net/id/data/catalog` (federation/sync) – list changed public ids since timestamp.
-20. POST `/net/id/cache/coordinate` (cache/request) – optional cache hint intake.
-21. GET `/net/id/user/locate/:user_id` (user/profile/get) – profile snapshot / location.
-22. POST `/net/id/federation/announce` (federation/sync) – push deltas (alt to pull).
+18. POST `/net/id/search/global` (search/query) – network search (public scope).
+19. POST `/net/id/search/index/sync` (search/index) – index delta ingest.
+20. GET `/net/id/data/catalog` (federation/sync) – list changed public ids since timestamp.
+21. POST `/net/id/cache/coordinate` (cache/request) – optional cache hint intake.
+22. GET `/net/id/user/locate/:user_id` (user/profile/get) – profile snapshot / location.
+23. POST `/net/id/federation/announce` (federation/sync) – push deltas (alt to pull).
 
 All JSON fields names mirror the protocol schemas in `net/SPEC.md` and `nrtf/SPEC.md`.
 
@@ -140,6 +149,7 @@ All JSON fields names mirror the protocol schemas in `net/SPEC.md` and `nrtf/SPE
 | POST /net/id/migration/instance/request | migration/instance/request        | Instance→Server          | Start instance move   |
 | POST /net/id/migration/instance/approve | migration/instance/approve        | Server→Instance          | Approve instance move |
 | GET /net/id/migration/aliases           | migration/aliases/update          | Server→Instance          | Alias map snapshot    |
+| GET /net/id/capabilities                | capabilities/request              | Any→Server               | Capabilities inquiry  |
 | POST /net/id/search/global              | search/query                      | Any→Server               | Search (public)       |
 | POST /net/id/search/index/sync          | search/index                      | Instance→Server          | Index delta           |
 | GET /net/id/data/catalog                | federation/sync                   | Any→Server               | Public delta list     |
@@ -213,6 +223,7 @@ Search: merge keyword docs; simple dedupe by data_id.
 Cache: accept hints; no guarantees.  
 User profile: lightweight table served via user/profile/get.  
 Federation sync: diff = list of (data_id, ts, hash). Conflict: choose higher ts then hash tie‑break.
+Schema compliance: Only process data for supported schema providers. Check capabilities before accepting data operations. Forward unsupported data unchanged to maintain network connectivity.
 
 ## Force-Deletion (Server Misbehavior)
 

@@ -18,6 +18,15 @@ These must be implemented by both Server and Instance.
       {"status":"ok","api_version":1,"schema":1,"time":"2025-08-11T12:34:56Z","uptime_s":1234 }
       ```
 
+2. GET `/net/nr/capabilities` (nrtf_route: `capabilities/request`)
+    - Returns node capabilities and supported schema providers.
+    - Query params: `type` (optional filter: node|schema_providers|all)
+    - Response JSON (sample):
+
+      ```json
+      {"node_capabilities":{"stream":true,"search":true},"supported_schema_providers":["StreamingServer/1","ChatServer/2"],"schema_compliance_matrix":{"StreamingServer/1":["store","retrieve","search"],"ChatServer/2":["store","retrieve"]},"instance_type":"StreamingServer"}
+      ```
+
 <!-- EXPLANATIONS -->
 ## Protocol Message Schemas (For Implementation)
 
@@ -107,6 +116,9 @@ Generic data layer adds a set of routes: store/retrieve/delete data, search and 
 - Federation sync: timestamp and optional type filters; conflicts resolved by (newer ts, then lex hash).
 - Cache coordination is advisory; correctness does not depend on cache hits.
 - User data migrates with normal migration flows; keys unchanged.
+- Schema compliance: Generic data MUST be marked with `schema_provider` (e.g., "StreamingServer/1") and `schema_version`. Instances and Identity Servers MUST only store/process data for schema providers they explicitly support in their capabilities. Unsupported data MUST be passed through the network without processing.
+- Capabilities advertisement: Nodes MUST advertise supported schema providers via capabilities endpoints. Data operations MUST check compliance before processing.
+- Pass-through behavior: When a node receives data with unsupported schema_provider, it MUST forward the data unchanged through federation without attempting to parse or validate the content beyond NRTF frame integrity.
   - Security Measures:
     - Multi-layer Signatures: Every propagated object (registration, broadcast, evidence, view) is individually signed. Optional multi-sig aggregates for consensus-critical events.
     - Replay Protection: Nonce, timestamp and sliding cache per key.
@@ -172,6 +184,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
    - timestamp time
    - nonce string (32 hex chars = 128 bits)
    - capabilities list (`cap capabilities:[feature1 feature2]`) OR table (`cap capabilities:{ feature1 true }`)
+   - supported_schema_providers list (list of supported schema_provider strings, e.g., ["StreamingServer/1", "ChatServer/2"])
    - connected_identity_servers table (id → fingerprint)
    - public_key bytes_b64
    - transport_sig_alg string
@@ -354,6 +367,8 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - data_id string (unique identifier for the data)
     - content_type string (MIME type or application identifier)
     - visibility string (public|private|restricted)
+    - schema_provider string (provider/version, e.g. "StreamingServer/1")
+    - schema_version int (semantic version for the data schema)
     - data table (the actual data content as NRTF table)
     - signature bytes_b64 (data integrity signature)
 
@@ -366,11 +381,14 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
 25. DATA_RETRIEVE (route `data/retrieve`)
     - data_id string
     - requestor_id string (user or instance identifier)
+    - supported_schemas list (list of supported schema_provider strings)
     - access_token bytes_b64 (authorization token)
 
 26. DATA_RETRIEVE_RESPONSE (route `data/retrieve.response`)
     - data_id string
     - content_type string
+    - schema_provider string (provider/version that created the data)
+    - schema_version int (semantic version for the data schema)
     - data table (retrieved data content)
     - cached_at time
     - signature bytes_b64
@@ -466,7 +484,44 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - next_page_token string (pagination token)
     - signature bytes_b64
 
+42. CAPABILITIES_REQUEST (route `capabilities/request`)
+    - requestor_id string (requesting entity identifier)
+    - capabilities_type string (node|schema_providers|all)
+
+43. CAPABILITIES_RESPONSE (route `capabilities/response`)
+    - node_capabilities table (basic node capabilities)
+    - supported_schema_providers list (list of supported schema_provider strings)
+    - schema_compliance_matrix table (schema_provider → supported_operations)
+    - instance_type string (optional, specific instance type like "StreamingServer")
+    - signature bytes_b64
+
 Field naming in NRTF tables should use snake_case to match these schema names.
+
+## Schema Compliance and Data Routing
+
+The NoReplacement Network enforces schema compliance to ensure type safety while maintaining network connectivity:
+
+### Schema Provider Format
+
+Schema providers use the format `<Provider>/<Version>` (e.g., "StreamingServer/1", "ChatServer/2").
+
+### Compliance Rules
+
+1. Registration: Instances MUST declare `supported_schema_providers` during registration.
+2. Data Operations: Nodes MUST only process data for schemas they explicitly support.
+3. Pass-through: Unsupported data MUST be forwarded unchanged through federation.
+4. Capabilities: All nodes MUST expose `/capabilities` endpoints listing supported schemas.
+
+### Processing Flow
+
+1. Receive data: check `schema_provider` field in incoming data.
+2. Compliance check: Verify if the schema is in the node's supported list.
+3. Process/Forward:
+   - If supported: Process normally (validate, store, index, etc.)
+   - If unsupported: Forward through federation without content processing
+4. Ensure connectivity: Network remains functional even with schema mismatches.
+
+This approach allows the network to evolve and support diverse use cases while maintaining reliability and preventing data corruption from misunderstood formats.
 
 - Identity Server to Instance
   - If the Server has committed a Sin:
