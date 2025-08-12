@@ -1,6 +1,5 @@
 # NR Transmission Format Specification
 
-<!-- DESC -->
 NoReplacement Transmission Format (`NRTF`) is the single canonical, typed text format for transporting requests, responses, broadcasts, and control envelopes across the NR Network ("Net").  
 Design goals:
 
@@ -10,7 +9,6 @@ Design goals:
 - Strong, predictable typing with deterministic ordering
 - Forward compatible and easy for tooling to parse
 
-<!-- EXPLANATIONS -->
 ## TLDR
 
 ```txt
@@ -121,7 +119,7 @@ cap capabilities:{ stream true metrics true }        # table alternative
 Negotiation rules:
 
 1. Client sends desired (api, schema) and capabilities.
-2. Server either accepts or responds with `error version:mismatch "expected=1 got=2"` (optionally providing supported range in human field).
+2. Server either accepts or responds with `error version:mismatch "expected=1 got=2"` (optionally providing supported range in the human field).
 3. Instances MUST NOT downgrade automatically without operator policy unless a downgrade is listed in its capabilities.
 
 ## Canonical Form and Signing
@@ -130,7 +128,7 @@ NRTF is inherently self‑canonical. Implementations MUST NOT project frames int
 
 Canonicalization algorithm (deterministic for signing and hashing):
 
-1. Parse statements into structured form (ordered header list + single body element).
+1. Parse statements into structured form (ordered header list and a single body element).
 2. Validate there is at most one of each singleton header (`api`, `schema`, `id`, `ts`, `nonce`, `cap`, `sigalg`, `pub`, `sig`). Duplicate = rejection.
 3. Remove any `sig` line(s) temporarily from the canonical set (signature is over everything else).
 4. Canonicalize whitespace: when re‑rendering, each header line = `<key><SP><value>\n` with a single space separator. No trailing spaces.
@@ -141,7 +139,7 @@ Canonicalization algorithm (deterministic for signing and hashing):
 7. Scalars:
     - int: base‑10, optional leading `-`, no leading zeros (except zero itself).
     - float: minimal decimal (strip trailing zeros. No `+`. At least one digit before and after decimal if decimal present). Scientific notation disallowed (use plain form) until a future extension.
-    - bool: `true` / `false`.
+    - bool: `true` or `false`.
     - none: literal `none`.
     - string: quoted with `"`. Escape `"` and `\\` and control chars (0x00-0x1F) using `\xHH`.
 8. Binary data SHOULD be base64 prefixed: `base64:...` unless the route declares a different encoding.
@@ -250,18 +248,17 @@ msg :{ instance_url "<https-url>" connected_identity_servers :{ primary "<finger
 7. Consistent Parsing: Whitespace is insignificant except within quoted strings. Multiple spaces collapse. Trailing spaces ignored.
 8. Time Skew: Large skew events optionally logged for operator time-sync alerts.
 9. Partial Frames: In streaming transports, frames MUST terminate with a blank line (double newline) to delimit. Incomplete frames time out.
-10. Encryption: NRTF itself does not provide encryption. Rely on TLS per Net spec.
+10. Encryption: NRTF itself does not provide encryption. Rely on TLS (or equivalent) per Net spec.
 
 ## Generic Data Transport
 
-Lightweight routes let instances store generic structured data, search, coordinate cache, sync, and manage user‑scoped records. Detailed flow lives in Net spec; this section only lists message schema stubs.
+Lightweight routes let instances store generic structured data, search, coordinate cache, sync, and manage scoped records. Detailed flow lives in the Net spec, this section only lists message schema stubs. Implementations that do not support a given application schema MUST still preserve and forward the canonical NRTF frame unchanged (unless their policy blacklists that schema), and Identity Servers MUST store at least the canonical frame with minimal metadata when the schema is not blacklisted.
 
 Core categories:
 
 - Data store, retrieve, delete
 - Search (query and index update)
 - Cache (request, response, invalidate)
-- User data and profile
 - Federation sync (delta updates)
 
 Single illustrative frame:
@@ -395,7 +392,7 @@ Types:
 | string | "hello"        | quoted and escapes      | UTF-8. Escape `"` `\\` control chars via `\xHH` |
 | int    | 42             | digits                  | 64-bit signed RECOMMENDED                       |
 | float  | 3.14           | minimal decimal         | No NaN/Inf. No scientific notation              |
-| bool   | true           | true / false            | lowercase                                       |
+| bool   | true           | true or false           | lowercase                                       |
 | none   | none           | none                    | Represents absence                              |
 | table  | :{ key value } | ordered key/value pairs | Keys sorted ascending for signing               |
 | list   | :[ a b c ]     | ordered items           | Order preserved, not sorted                     |
@@ -448,23 +445,23 @@ An implementation is conformant if it:
 
 ## Error Codes (Catalog)
 
-| Code               | Meaning (Summary)                         |
-| ------------------ | ----------------------------------------- |
-| VERSION_MISMATCH   | api/schema not supported                  |
-| REPLAY_DETECTED    | Nonce+ts+pub reused or outside window     |
-| BAD_SIGNATURE      | Signature verification failed             |
-| FORMAT_VIOLATION   | Parsing / grammar / duplicate key error   |
-| SIZE_EXCEEDED      | Frame exceeds configured byte limit       |
-| TIME_SKEW          | ts outside allowable skew window          |
-| ABUSE_THRESHOLD    | Rate / suspicion threshold crossed        |
-| INCOMPATIBLE_CAP   | Missing required capability               |
-| POLL_CLOSED        | Vote received after expiry                |
-| NOT_FOUND          | Referenced resource absent                |
-| UNAUTHORIZED       | Auth / key invalid                        |
-| MIGRATION_CONFLICT | Overlapping migration attempt             |
-| ALIAS_EXPIRED      | Action references expired alias           |
-| STATE_CONFLICT     | Conflicting state view hash / merkle root |
-| UNSUPPORTED_ROUTE  | Route not recognized                      |
+| Code               | Meaning (Summary)                          |
+| ------------------ | ------------------------------------------ |
+| VERSION_MISMATCH   | api/schema not supported                   |
+| REPLAY_DETECTED    | Nonce+ts+pub reused or outside window      |
+| BAD_SIGNATURE      | Signature verification failed              |
+| FORMAT_VIOLATION   | Parsing, grammar or duplicate key error    |
+| SIZE_EXCEEDED      | Frame exceeds configured byte limit        |
+| TIME_SKEW          | ts outside allowable skew window           |
+| ABUSE_THRESHOLD    | Rate or suspicion threshold crossed        |
+| INCOMPATIBLE_CAP   | Missing required capability                |
+| POLL_CLOSED        | Vote received after expiry                 |
+| NOT_FOUND          | Referenced resource absent                 |
+| UNAUTHORIZED       | Auth or key invalid                        |
+| MIGRATION_CONFLICT | Overlapping migration attempt              |
+| ALIAS_EXPIRED      | Action references expired alias            |
+| STATE_CONFLICT     | Conflicting state view hash or merkle root |
+| UNSUPPORTED_ROUTE  | Route not recognized                       |
 
 Implementations MAY extend with vendor prefixed codes `VND_<TOKEN>`.
 
@@ -516,13 +513,6 @@ schema search/index.message :{ data_id string keywords :[ ] metadata table insta
 schema cache/invalidate.message :{ data_id string reason string timestamp string instance_id string signature string }
 schema cache/request.message :{ data_id string priority int requestor_instance_id string }
 schema cache/response.message :{ data_id string cache_status string cached_instances :[ ] signature string }
-schema user/data/store.request :{ user_id string data_key string data_value table visibility string signature string }
-schema user/data/retrieve.request :{ user_id string data_key string requestor_id string access_token string }
-schema user/data/retrieve.response :{ user_id string data_key string data_value table retrieved_at string signature string }
-schema user/profile/get.request :{ user_id string fields :[ ] requestor_id string }
-schema user/profile/get.response :{ user_id string profile table fields_provided :[ ] signature string }
 schema federation/sync.request :{ last_sync_timestamp string filter_types :[ ] requestor_instance_id string }
 schema federation/sync.response :{ updates :[ ] sync_timestamp string next_page_token string signature string }
 ```
-
-Tooling MAY parse these schemas to auto-generate parsers/validators.

@@ -269,20 +269,6 @@
       <arg name="instance_id" type="uuid7" />
       <arg name="signature" type="bytes_b64" />
     </event>
-    <request name="user_data_store">
-      <arg name="user_id" type="string" />
-      <arg name="data_key" type="string" />
-      <arg name="data_value" type="table" />
-      <arg name="visibility" type="string" />
-      <arg name="signature" type="bytes_b64" />
-    </request>
-    <event name="user_data_retrieve_response">
-      <arg name="user_id" type="string" />
-      <arg name="data_key" type="string" />
-      <arg name="data_value" type="table" />
-      <arg name="retrieved_at" type="time" />
-      <arg name="signature" type="bytes_b64" />
-    </event>
     <request name="federation_sync">
       <arg name="last_sync_timestamp" type="time" />
       <arg name="filter_types" type="table" />

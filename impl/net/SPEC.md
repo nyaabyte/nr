@@ -8,7 +8,7 @@ This is with strong typing (NRTF), digital signatures, timestamps and nonces, qu
 <!-- ROUTES -->
 ## Shared REST Endpoints (/net/nr/...)
 
-These must be implemented by both Server and Instance.
+These MUST be implemented by both Server and Instance.
 
 1. GET `/net/nr/health` (nrtf_route: `heartbeat`)
     - Returns instance status, version, uptime.
@@ -36,7 +36,7 @@ Note: All control messages are transmitted ONLY as NRTF frames. There is no JSON
 
 ## Notes on Protocols
 
-The wider Internet (HTTP/S) will be used for communication between Instances and Identity Servers initially. We're looking into a potential migration to Raven Dev Team's [Betanet](https://ravendevteam.org/betanet) (BETANET) upon it reaching maturity for significantly more decentralized transport.
+The wider Internet (HTTP/S) will be used for communication between Instances and Identity Servers initially. We're looking into a potential migration to Raven Dev Team's [Betanet](https://ravendevteam.org/betanet) upon it reaching maturity for significantly more decentralized transport.
 
 ## Flow
 
@@ -48,7 +48,7 @@ The wider Internet (HTTP/S) will be used for communication between Instances and
   - When an Instance registers (happy path):
         1. Instance prepares RegistrationEnvelope (pure NRTF):
         - Fields: instance_id (UUIDv7), instance_url (HTTPS, externally reachable), api_version, nrtf_schema_version, timestamp (RFC3339), nonce (128-bit random), capabilities (optional list/table), connected_identity_servers (initially declared), public_key (Ed25519 recommended), proof_of_possession_signature (signature over canonical NRTF headers+body), transport_sig_alg.
-        2. Instance sends RegistrationEnvelope to a specifically-defined Identity Server over mutually-authenticated TLS (mTLS) or HTTPS + DANE/TOFU + Certificate Pin set. TLS session is not a substitute for the application signatures.
+    2. Instance sends RegistrationEnvelope to a specifically-defined Identity Server over mutually-authenticated TLS (mTLS), HTTPS with DANE or TOFU, or [Betanet](../../simple/compliance/Betanet.md)'s Outer TLS + Access-Ticket + Handshakes and a Certificate Pin set. Direct TLS is not a substitute for the application signatures.
         3. Identity Server performs verification steps:
             - Version check: api_version and nrtf_schema_version must be compatible. Else reject VERSION_MISMATCH (do not cache).
             - Freshness and replay: timestamp inside ±300s (default) and nonce not reused in last 24h for this public key. Else REPLAY_DETECTED.
@@ -108,19 +108,23 @@ The wider Internet (HTTP/S) will be used for communication between Instances and
 
 ### Data Plane
 
-Generic data layer adds a set of routes: store/retrieve/delete data, search and index update, cache request/response/invalidate, user data/profile, federation sync deltas. Core rules:
+Generic data layer adds a set of routes: store, retrieve, and delete data, search and index update, cache request, response, and invalidate, and federation sync deltas. Core rules:
 
 - All frames signed (same NRTF rules).
-- Visibility: public (replicable and searchable), private (origin only), restricted (implementation policy).
-- Public items MAY be indexed and gossiped; private never leave origin on store.
-- Federation sync: timestamp and optional type filters; conflicts resolved by (newer ts, then lex hash).
-- Cache coordination is advisory; correctness does not depend on cache hits.
-- User data migrates with normal migration flows; keys unchanged.
-- Schema compliance: Generic data MUST be marked with `schema_provider` (e.g., "StreamingServer/1") and `schema_version`. Instances and Identity Servers MUST only store/process data for schema providers they explicitly support in their capabilities. Unsupported data MUST be passed through the network without processing.
-- Capabilities advertisement: Nodes MUST advertise supported schema providers via capabilities endpoints. Data operations MUST check compliance before processing.
-- Pass-through behavior: When a node receives data with unsupported schema_provider, it MUST forward the data unchanged through federation without attempting to parse or validate the content beyond NRTF frame integrity.
+- Visibility: public (replicable and searchable), private (origin only), or restricted (implementation policy).
+- Public items MAY be indexed and gossiped. Private items never leave origin on store.
+- Federation sync: timestamp and optional type filters, conflicts resolved by (newer ts, then lex hash).
+- Cache coordination is advisory. Correctness does not depend on cache hits.
+- Schema compliance: Generic data MUST be marked with both `schema_provider` (for example, "StreamingServer/1") and `schema_version`. Instances and Identity Servers MUST only store and process data for schema providers and versions they explicitly support in their capabilities. If the schema provider or version is unsupported, the node MUST NOT attempt to process the content and MUST forward the frame unchanged to maintain network connectivity.
+- Capabilities advertisement: Nodes MUST advertise supported schema providers and versions via capabilities endpoints. Data operations MUST check the local node’s declared support and the sender’s capabilities before processing, otherwise the data MUST be forwarded unchanged through the rest of the Net.
+- Pass-through behavior: When a node receives data with an unsupported `schema_provider` or version, it MUST forward the data unchanged through federation without attempting to parse or validate the content beyond NRTF frame integrity.
+
+#### Identity Server storage policy
+
+- Identity Servers MUST explicitly blacklist schema providers and versions they refuse to store.
+- If a schema provider or version is not blacklisted, Identity Servers MUST store generic data at least as the canonical NRTF frame with minimal metadata even if they do not support parsing that schema. Processing and indexing are only for supported schemas.
   - Security Measures:
-    - Multi-layer Signatures: Every propagated object (registration, broadcast, evidence, view) is individually signed. Optional multi-sig aggregates for consensus-critical events.
+    - Multi-layer Signatures: Every propagated object (registration, broadcast, evidence, view) is individually signed. Optional multi-signature aggregates for consensus-critical events.
     - Replay Protection: Nonce, timestamp and sliding cache per key.
     - Merkle Integrity: Network Identity List hashed. Divergence proofs enable efficient inconsistency challenges.
     - Quorum Requirements: Delisting (Instance or Server) requires ≥Q matching votes from both roles (Instances and Identity Servers). Q is configurable but must be ≥2 and < half of total healthy participants to avoid deadlock. Recommended dynamic Q = ceil(log2(N+1)).
@@ -129,12 +133,18 @@ Generic data layer adds a set of routes: store/retrieve/delete data, search and 
     - Audit Logging: Append-only hash chain per Identity Server. Periodic checkpoint signed roots gossip to peers for external verification. Mismatch triggers VIEW_CHALLENGE.
     - Revocation Caches: Maintain recently delisted keys to prevent replay re-registration using stale broadcasts.
     - Schema and Version Governance: Strict semantic versioning. Backward compatibility window defined. Minor versions may be accepted if declared by capability negotiation. Major mismatch → rejection.
-    - Transport Security: mTLS STRONGLY RECOMMENDED. At minimum enforce TLS, strong cipher suites, OCSP stapling. Certificate pinning optional.
+    - Transport Security: mTLS or equivalent STRONGLY RECOMMENDED. At minimum enforce TLS (or equivalent), strong cipher suites, OCSP stapling. Certificate pinning optional.
     - Privacy: Only fingerprints (hashes) of large evidence objects may be broadcast. Full content fetch on-demand to limit data leakage.
     - Consistent Conflict Resolution: For conflicting public_key_fingerprint per instance_id, place instance into Quarantine. No traffic forwarded until resolved by quorum.
     - Liveness Safeguards: Heartbeat (SIGNED_HEARTBEAT) every H seconds. Absence beyond K intervals transitions state to Unreachable. After further threshold → Expired (does not auto-delist, but excluded from quorum counts).
     - Resource Caps: Upper bounds on broadcast fan-out per interval. Overflow enters backpressure queue with signed ordering metadata.
     - Edge Case Handling: Duplicate observation_id → discard. Stale timestamp → discard. Unverifiable signature → reject and increment suspicion. Unreachable instance_url after R retries → mark Unreachable. Inconsistent Merkle root across ≥2 peers → initiate cross-check protocol.
+
+Aggregation and validation rules (receive, publish, sync):
+
+1. Receive: verify signatures, timestamp, and nonce. Ensure `schema_provider` and `schema_version` exist, apply blacklist, process if supported, otherwise store opaque frame and forward unchanged.
+2. Publish: include schema-aware index data only for supported schemas, include minimal metadata for stored but unsupported schemas, preserve signatures and hashes.
+3. Sync: deduplicate by `data_id` and `frame_hash`, resolve by newer timestamp then lexicographic hash, validate signatures, apply schema-level validation only for supported schemas, do not propagate blacklisted items.
 
 ### Migration (Servers and Instances)
 
@@ -190,7 +200,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
    - transport_sig_alg string
    - proof_of_possession_signature bytes_b64
 
-2. RegistrationBroadcast (route `broadcast/register`)
+2. RegistrationBroadcast (NRTF: broadcast/register)
    - registration RegistrationEnvelope (canonical form)
    - instance_public_key_fingerprint fingerprint
    - server_id fingerprint
@@ -200,18 +210,18 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
    - previous_ledger_hash fingerprint|null
    - server_signature bytes_b64
 
-3. CHALLENGE (route `challenge/reachability`)
+3. CHALLENGE (NRTF: challenge/reachability)
    - instance_id uuid7
    - challenge_nonce string (32 hex chars = 128 bits)
    - expected_signature_alg string
 
-4. SIGNED_CHALLENGE (route `challenge/reachability/response`)
+4. SIGNED_CHALLENGE (NRTF: challenge/reachability/response)
    - instance_id uuid7
    - challenge_nonce string
    - timestamp time
    - signature bytes_b64
 
-5. SIN_REPORT (route `report/instance`)
+5. SIN_REPORT (NRTF: report/instance)
    - instance_id uuid7
    - evidence :{ messages :{ &lt;uuid7&gt; fingerprint } original_contents_hash fingerprint } (or on-demand retrieval)
    - offending_message_uuids table (k → uuid7)
@@ -223,19 +233,19 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
    - server_timestamp time
    - integrity_hash fingerprint (hash of concatenated ordered fields)
 
-6. EVIDENCE_REQUEST (route `evidence/request`)
+6. EVIDENCE_REQUEST (NRTF: evidence/request)
    - instance_id uuid7 (accused)
    - requestor_id uuid7
    - message_uuids table (k → uuid7)
 
-7. SignedEvidenceResponse (route `evidence/response`)
+7. SignedEvidenceResponse (NRTF: evidence/response)
    - instance_id uuid7 (accused)
    - message_existence table (uuid7 → bool)
    - message_hashes table (uuid7 → fingerprint|null)
    - current_api_version int
    - signature bytes_b64
 
-8. SERVER_SIN_REPORT (route `report/server`)
+8. SERVER_SIN_REPORT (NRTF: report/server)
    - server_id fingerprint|uuid7
    - verified_message_signature bytes_b64
    - offending_server_message_uuid uuid7
@@ -249,37 +259,37 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
    - timestamps :{ local time, observed time }
    - instance_signature bytes_b64
 
-9. VIEW_REQUEST (route `view/request`)
+9. VIEW_REQUEST (NRTF: view/request)
    - server_id fingerprint
    - nonce string
 
-10. VIEW_CHALLENGE (route `view/challenge`)
+10. VIEW_CHALLENGE (NRTF: view/challenge)
     - server_id fingerprint
     - observation_root fingerprint
     - nonce string
 
-11. CONSENSUS_POLL (route `consensus/poll`)
+11. CONSENSUS_POLL (NRTF: consensus/poll)
     - target_type string (instance|server)
     - target_id uuid7|fingerprint
     - evidence_hash fingerprint
     - poll_id uuid7
     - expires_at time
 
-12. CONSENSUS_VOTE (route `consensus/vote`)
+12. CONSENSUS_VOTE (NRTF: consensus/vote)
     - poll_id uuid7
     - voter_type string (instance|server)
     - voter_id uuid7|fingerprint
     - decision string (GUILTY|NOT_GUILTY|ABSTAIN)
     - signature bytes_b64
 
-13. SERVER_DELIST_NOTICE (route `consensus/result/server`)
+13. SERVER_DELIST_NOTICE (NRTF: consensus/result/server)
     - server_id fingerprint
     - poll_id uuid7
     - decision string (GUILTY)
     - aggregate_signatures table (signer_id → bytes_b64)
     - timestamp time
 
-14. ROTATE_KEY (route `key/rotate`)
+14. ROTATE_KEY (NRTF: key/rotate)
     - subject_type string (instance|server)
     - subject_id uuid7|fingerprint
     - old_public_key bytes_b64
@@ -288,19 +298,19 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - old_key_signature bytes_b64 (signature by old key over new key and timestamp)
     - new_key_signature bytes_b64 (optional cross-sign)
 
-15. SIGNED_HEARTBEAT (route `heartbeat`)
+15. SIGNED_HEARTBEAT (NRTF: heartbeat)
     - subject_type string
     - subject_id uuid7|fingerprint
     - last_seen_ts time
     - state_hash fingerprint
     - signature bytes_b64
 
-16. RECURSE_IDENTITIES (route `recurse/request`)
+16. RECURSE_IDENTITIES (NRTF: recurse/request)
     - traversal_id uuid7
     - depth int (remaining depth)
     - visited table (fingerprint → bool)
 
-17. RECURSE_IDENTITIES_RESPONSE (route `recurse/response`)
+17. RECURSE_IDENTITIES_RESPONSE (NRTF: recurse/response)
     - traversal_id uuid7
     - server_public_key bytes_b64
     - signed_instance_list table (instance_id → fingerprint)
@@ -308,7 +318,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - response_timestamp time
     - signature bytes_b64
 
-18. SERVER_MIGRATION_ANNOUNCE (route `migration/server/announce`)
+18. SERVER_MIGRATION_ANNOUNCE (NRTF: migration/server/announce)
     - migration_id uuid7
     - old_server_id fingerprint
     - new_server_public_key bytes_b64
@@ -317,7 +327,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - old_server_signature bytes_b64 (old key over all above)
     - quorum_attestations table (server_id → bytes_b64) (optional)
 
-19. SERVER_MIGRATION_COMMIT (route `migration/server/commit`)
+19. SERVER_MIGRATION_COMMIT (NRTF: migration/server/commit)
     - migration_id uuid7
     - old_server_id fingerprint
     - new_server_id fingerprint
@@ -326,7 +336,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - new_server_signature bytes_b64 (new key)
     - old_server_signature bytes_b64 (old key)
 
-20. INSTANCE_MIGRATION_REQUEST (route `migration/instance/request`)
+20. INSTANCE_MIGRATION_REQUEST (NRTF: migration/instance/request)
     - migration_id uuid7
     - old_instance_id uuid7
     - new_instance_id uuid7
@@ -336,7 +346,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - request_timestamp time
     - old_instance_signature bytes_b64
 
-21. INSTANCE_MIGRATION_APPROVED (route `migration/instance/approve`)
+21. INSTANCE_MIGRATION_APPROVED (NRTF: migration/instance/approve)
     - migration_id uuid7
     - old_instance_id uuid7
     - new_instance_id uuid7
@@ -344,7 +354,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - server_id fingerprint
     - server_signature bytes_b64
 
-22. INSTANCE_MIGRATION_NOTICE (route `migration/instance/notice`)
+22. INSTANCE_MIGRATION_NOTICE (NRTF: migration/instance/notice)
     - migration_id uuid7
     - old_instance_id uuid7
     - new_instance_id uuid7
@@ -352,7 +362,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - server_id fingerprint
     - server_signature bytes_b64
 
-23. ALIAS_MAP_UPDATE (route `migration/aliases/update`)
+23. ALIAS_MAP_UPDATE (NRTF: migration/aliases/update)
     - alias_set_hash fingerprint
     - active_aliases table (old_id → new_id)
     - server_id fingerprint
@@ -363,7 +373,7 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
 #### Generic Data Transport Messages
 <!-- END -->
 
-23. DATA_STORE (route `data/store`)
+23. DATA_STORE (NRTF: data/store)
     - data_id string (unique identifier for the data)
     - content_type string (MIME type or application identifier)
     - visibility string (public|private|restricted)
@@ -372,19 +382,19 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - data table (the actual data content as NRTF table)
     - signature bytes_b64 (data integrity signature)
 
-24. DATA_STORE_RESPONSE (route `data/store.response`)
+24. DATA_STORE_RESPONSE (NRTF: data/store.response)
     - data_id string
     - stored_at time
     - instance_id uuid7 (storing instance)
     - signature bytes_b64
 
-25. DATA_RETRIEVE (route `data/retrieve`)
+25. DATA_RETRIEVE (NRTF: data/retrieve)
     - data_id string
-    - requestor_id string (user or instance identifier)
+    - requestor_id string (instance identifier)
     - supported_schemas list (list of supported schema_provider strings)
     - access_token bytes_b64 (authorization token)
 
-26. DATA_RETRIEVE_RESPONSE (route `data/retrieve.response`)
+26. DATA_RETRIEVE_RESPONSE (NRTF: data/retrieve.response)
     - data_id string
     - content_type string
     - schema_provider string (provider/version that created the data)
@@ -393,102 +403,71 @@ Types reference NRTF primitives: string, int, float, bool, none, table. `uuid7` 
     - cached_at time
     - signature bytes_b64
 
-27. DATA_DELETE (route `data/delete`)
+27. DATA_DELETE (NRTF: data/delete)
     - data_id string
     - owner_id string
     - signature bytes_b64
 
-28. DATA_DELETE_RESPONSE (route `data/delete.response`)
+28. DATA_DELETE_RESPONSE (NRTF: data/delete.response)
     - data_id string
     - deleted_at time
     - signature bytes_b64
 
-29. SEARCH_QUERY (route `search/query`)
+29. SEARCH_QUERY (NRTF: search/query)
     - query string (search terms)
     - filters table (content_type, visibility, etc.)
     - limit int (max results)
     - offset int (pagination offset)
     - requestor_id string
 
-30. SEARCH_QUERY_RESPONSE (route `search/query.response`)
+30. SEARCH_QUERY_RESPONSE (NRTF: search/query.response)
     - results list (array of matching data entries)
     - total_count int
     - query_id uuid7
     - cached_at time
     - signature bytes_b64
 
-31. SEARCH_INDEX_UPDATE (route `search/index`)
+31. SEARCH_INDEX_UPDATE (NRTF: search/index)
     - data_id string
     - keywords list (extracted keywords)
     - metadata table (additional searchable metadata)
     - instance_id uuid7
     - signature bytes_b64
 
-32. CACHE_INVALIDATE (route `cache/invalidate`)
+32. CACHE_INVALIDATE (NRTF: cache/invalidate)
     - data_id string
     - reason string (updated|deleted|expired)
     - timestamp time
     - instance_id uuid7
     - signature bytes_b64
 
-33. CACHE_REQUEST (route `cache/request`)
+33. CACHE_REQUEST (NRTF: cache/request)
     - data_id string
     - priority int (cache priority 1-10)
     - requestor_instance_id uuid7
 
-34. CACHE_RESPONSE (route `cache/response`)
+34. CACHE_RESPONSE (NRTF: cache/response)
     - data_id string
     - cache_status string (cached|not_cached|caching)
     - cached_instances list (instances with cached copies)
     - signature bytes_b64
 
-35. USER_DATA_STORE (route `user/data/store`)
-    - user_id string
-    - data_key string (user data namespace key)
-    - data_value table (user data content)
-    - visibility string (public|private|contacts)
-    - signature bytes_b64
-
-36. USER_DATA_RETRIEVE (route `user/data/retrieve`)
-    - user_id string
-    - data_key string
-    - requestor_id string
-    - access_token bytes_b64
-
-37. USER_DATA_RETRIEVE_RESPONSE (route `user/data/retrieve.response`)
-    - user_id string
-    - data_key string
-    - data_value table
-    - retrieved_at time
-    - signature bytes_b64
-
-38. USER_PROFILE_GET (route `user/profile/get`)
-    - user_id string
-    - fields list (requested profile fields)
-    - requestor_id string
-
-39. USER_PROFILE_GET_RESPONSE (route `user/profile/get.response`)
-    - user_id string
-    - profile table (user profile data)
-    - fields_provided list (actually returned fields)
-    - signature bytes_b64
-
-40. FEDERATION_SYNC_REQUEST (route `federation/sync`)
+35. FEDERATION_SYNC_REQUEST (NRTF: federation/sync)
     - last_sync_timestamp time
     - filter_types list (data types to sync)
     - requestor_instance_id uuid7
 
-41. FEDERATION_SYNC_RESPONSE (route `federation/sync.response`)
+36. FEDERATION_SYNC_RESPONSE (NRTF: federation/sync.response)
     - updates list (incremental update records)
     - sync_timestamp time
     - next_page_token string (pagination token)
     - signature bytes_b64
 
-42. CAPABILITIES_REQUEST (route `capabilities/request`)
+37. CAPABILITIES_REQUEST (NRTF: capabilities/request)
     - requestor_id string (requesting entity identifier)
     - capabilities_type string (node|schema_providers|all)
 
-43. CAPABILITIES_RESPONSE (route `capabilities/response`)
+38. CAPABILITIES_RESPONSE (NRTF: capabilities/response)
     - node_capabilities table (basic node capabilities)
     - supported_schema_providers list (list of supported schema_provider strings)
     - schema_compliance_matrix table (schema_provider → supported_operations)

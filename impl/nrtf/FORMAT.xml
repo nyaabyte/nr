@@ -53,7 +53,7 @@
     <note>Whitespace outside quoted strings is insignificant.</note>
     <note>Replay detection uses (nonce, ts, pub) tuple.</note>
     <note>Chunked transfer uses additional extension headers (e.g. chunk meta :{ index 0 total 5 ... }).</note>
-    <note>Generic data transport routes support content storage, search, caching, and user data management.</note>
+    <note>Generic data transport routes support content storage, search and caching.</note>
     <note>Data visibility controls access: public (network-wide), private (owner only), restricted (custom ACL).</note>
     <note>Search indexes maintained distributedly across instances for federated query processing.</note>
     <note>Cache coordination optimizes data distribution and access performance across the network.</note>

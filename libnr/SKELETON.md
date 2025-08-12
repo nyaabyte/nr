@@ -62,6 +62,7 @@ pub struct NodeCapabilities {
     pub basic_capabilities: Table,
     pub supported_schema_providers: Vec<SchemaProvider>,
     pub instance_type: Option<String>,
+    pub blacklisted_schemas: Vec<(String, u32)>,
 }
 
 pub struct DataWithSchema {
@@ -71,6 +72,17 @@ pub struct DataWithSchema {
     pub schema_provider: String,
     pub schema_version: u32,
     pub data: Table,
+}
+
+impl NodeCapabilities {
+    // Returns true if the provider and version are supported
+    pub fn supports(&self, provider: &str, version: u32) -> bool;
+
+    // Returns a list of supported operations for the given provider and version
+    pub fn supported_operations(&self, provider: &str, version: u32) -> Vec<String>;
+
+    // Returns true if the provider and version are blacklisted (primarily Identity Servers which must store all generic data)
+    pub fn is_blacklisted(&self, provider: &str, version: u32) -> bool;
 }
 
 // Registration envelope (see spec)
@@ -110,29 +122,24 @@ pub trait Instance {
 
     // Capabilities
     fn get_capabilities(&self, capabilities_type: &str, auth: &AuthContext) -> NRTFResult<NodeCapabilities>;
-    fn supports_schema_provider(&self, schema_provider: &str) -> bool;
-    fn get_supported_operations(&self, schema_provider: &str) -> Vec<String>;
+    fn supports_schema_provider(&self, schema_provider: &str, schema_version: u32) -> bool;
+    fn get_supported_operations(&self, schema_provider: &str, schema_version: u32) -> Vec<String>;
 
     // Data with schema compliance
     fn store_data(&self, data: DataWithSchema, auth: &AuthContext) -> NRTFResult;
-    fn retrieve_data(&self, id: &str, supported_schemas: &[String], auth: &AuthContext) -> NRTFResult<DataWithSchema>;
+    fn retrieve_data(&self, id: &str, supported_schemas: &[(String, u32)], auth: &AuthContext) -> NRTFResult<DataWithSchema>;
     fn delete_data(&self, id: &str, auth: &AuthContext) -> NRTFResult;
 
     // Schema-aware search and index
-    fn search(&self, query: &str, schema_filter: Option<&[String]>, auth: &AuthContext) -> NRTFResult<Vec<Table>>;
+    fn search(&self, query: &str, schema_filter: Option<&[(String, u32)]>, auth: &AuthContext) -> NRTFResult<Vec<Table>>;
     fn update_search_index(&self, delta: &Delta, auth: &AuthContext) -> NRTFResult;
 
     // Cache
     fn request_cache_hint(&self, data_id: &str, hint: &str, auth: &AuthContext) -> NRTFResult;
     fn get_cache_status(&self, data_id: &str, auth: &AuthContext) -> NRTFResult<Table>;
 
-    // User data/profile
-    fn user_data_store(&self, user_id: &str, key: &str, value: &str, auth: &AuthContext) -> NRTFResult;
-    fn user_data_retrieve(&self, user_id: &str, key: &str, auth: &AuthContext) -> NRTFResult<Option<String>>;
-    fn get_user_profile(&self, user_id: &str, auth: &AuthContext) -> NRTFResult<Table>;
-
     // Federation with schema filtering
-    fn federation_sync(&self, since: Timestamp, schema_filter: Option<&[String]>, auth: &AuthContext) -> NRTFResult<Vec<Delta>>;
+    fn federation_sync(&self, since: Timestamp, schema_filter: Option<&[(String, u32)]>, auth: &AuthContext) -> NRTFResult<Vec<Delta>>;
     fn federation_announce(&self, deltas: &[Delta], auth: &AuthContext) -> NRTFResult;
 
     // Migration
@@ -156,11 +163,12 @@ pub trait IdentityServer {
 
     // Capabilities
     fn get_capabilities(&self, capabilities_type: &str, auth: &AuthContext) -> NRTFResult<NodeCapabilities>;
-    fn supports_schema_provider(&self, schema_provider: &str) -> bool;
-    fn validate_schema_compliance(&self, frame: &NRTFFrame) -> bool;
+    fn supports_schema_provider(&self, schema_provider: &str, schema_version: u32) -> bool;
+    fn validate_schema_compliance(&self, frame: &NRTFFrame) -> bool; // MUST check provider and version
+    fn is_schema_blacklisted(&self, schema_provider: &str, schema_version: u32) -> bool; // MUST drop if blacklisted, else store opaque frame at minimum
 
     // Data/search/federation with schema compliance
-    fn handle_search_query(&self, frame: &NRTFFrame) -> NRTFResult;
+    fn handle_search_query(&self, frame: &NRTFFrame) -> NRTFResult; // MUST filter by supported schemas
     fn handle_federation_sync(&self, frame: &NRTFFrame) -> NRTFResult;
     fn handle_federation_announce(&self, deltas: &[Delta], auth: &AuthContext) -> NRTFResult;
 
@@ -191,9 +199,6 @@ fn handle_nrtf_frame(frame: &NRTFFrame) {
         "search/index" => {/* Handle index update */},
         "cache/request" => {/* Handle cache hint */},
         "cache/response" => {/* Handle cache status */},
-        "user/data/store" => {/* Handle user data store */},
-        "user/data/retrieve" => {/* Handle user data retrieve */},
-        "user/profile/get" => {/* Handle user profile */},
         "federation/sync" => {/* Handle federation sync with schema filtering */},
         "federation/announce" => {/* Handle federation announce */},
         "migration/instance/request" => {/* Handle migration request */},
@@ -205,5 +210,14 @@ fn handle_nrtf_frame(frame: &NRTFFrame) {
         "consensus/vote" => {/* Handle vote */},
         _ => {/* Unknown route: return error */},
     }
+}
+
+// Minimal aggregation helpers which may be used by implementations
+fn dedupe_key(data_id: &str, frame_hash: &str) -> String { format!("{}:{}", data_id, frame_hash) }
+
+fn resolve_conflict(ts_a: Timestamp, hash_a: &str, ts_b: Timestamp, hash_b: &str) -> bool {
+    if ts_a > ts_b { return true; }
+    if ts_b > ts_a { return false; }
+    hash_a < hash_b
 }
 ```

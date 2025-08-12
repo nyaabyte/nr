@@ -26,14 +26,11 @@
     <request name="data_retrieve" />
     <request name="data_delete" />
     <request name="search_query" />
-    <request name="user_data_store" />
-    <request name="user_data_retrieve" />
     <request name="federation_sync" />
     <event name="data_store_response" />
     <event name="data_retrieve_response" />
     <event name="search_query_response" />
     <event name="search_index_update" />
-    <event name="user_data_retrieve_response" />
     <event name="federation_sync_response" />
   </interface>
 </protocol>

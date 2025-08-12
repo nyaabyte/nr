@@ -8,19 +8,19 @@ The network provides a complete platform for storing, searching, caching, and di
 
 Instances communicate with each other peer-to-peer for both control plane operations and data plane services including content distribution, search federation, and cache coordination.
 
-See [Net](net/SPEC.md) to begin your implementation.
+See [Net](impl/net/SPEC.md) to begin your implementation.
 
 - If you are developing a NoReplacement Instance or general-purpose implementation, you may want to view:
-  - [Instance](instance/SPEC.md)
-  - [NRTF](nrtf/SPEC.md)
+  - [Instance](impl/instance/SPEC.md)
+  - [NRTF](impl/nrtf/SPEC.md)
 
 - If you are developing a NoReplacement NRTF parser or attempting to convert JSON to NRTF, you may want to view:
-  - [NRTF](nrtf/SPEC.md)
-  - [NRTF as a JSON Replacement](nrtf/SPEC.md#nrtf-as-a-json-replacement)
+  - [NRTF](impl/nrtf/SPEC.md)
+  - [NRTF as a JSON Replacement](impl/nrtf/SPEC.md#nrtf-as-a-json-replacement)
 
 - If you are developing a NoReplacement Identity Server or general-purpose implementation, you may want to view:
-  - [Identity Server](identity/SPEC.md)
-  - [NRTF](nrtf/SPEC.md)
+  - [Identity Server](impl/identity/SPEC.md)
+  - [NRTF](impl/nrtf/SPEC.md)
 
 ## Compared to
 
@@ -30,11 +30,11 @@ See [Net](net/SPEC.md) to begin your implementation.
 
 - ATProto (Bluesky)
   - The AT Protocol (ATProto) focuses on modularity and user data portability. It is oriented more towards social media usage. It uses a federated architecture with Personal Data Servers and relays for indexing.
-  - NR is most similar to ATProto as it uses relays, individual data servers and emphasizes migration of servers and user data. However, social media is not the main focus. NR's main focus is censorship resistance and transport of generic data.
+  - NR is most similar to ATProto as it uses relays, individual data servers and emphasizes migration of servers and data. However, social media is not the main focus. NR's main focus is censorship resistance and transport of generic data.
 
 - ActivityPub (Mastodon)
   - ActivityPub is a W3C standard for decentralized data transport, widely used among federated networks.
-  - Compared to ActivityPub, NR does align more with ActivityPub's possible uses for generic data transport (even if it is primarily used for social networks), but NR emphasizes real-time data and migration of servers as well.
+  - Compared to ActivityPub, NR does align more with ActivityPub's possible uses for generic data transport even if it is primarily used for social networks, but NR emphasizes real-time data and migration of servers as well.
 
 - Betanet (Raven Dev Team)
   - Though not a real social-media supporting "protocol" as is Matrix/ATProto/ActivityPub, Betanet provides a decentralized "Internet 2" that meets the same anti-censorship standards we expect. NoReplacement's Net should be compatible and compliant with Betanet and should not work against it.
@@ -50,7 +50,7 @@ See [Net](net/SPEC.md) to begin your implementation.
 
 ### Projects using NoReplacement
 
-- [AIR (Allie's Internet Radio)](https://github.com/microcrit/air.git) will use NoReplacement for its user registration, data storage and peer-to-peer audio/video streaming upon its maturity.
+- [AIR (Allie's Internet Radio)](https://github.com/microcrit/air.git) will use NoReplacement for its data storage and peer-to-peer audio/video streaming upon its maturity.
 
 <!-- NOTES -->
 <!--
