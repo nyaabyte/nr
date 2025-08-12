@@ -8,7 +8,3 @@ Since NoReplacement is simply a mechanism of defining servers and relaying infor
 Since Betanet is also censorship-resistant and has a focus on data validation and decentralization, it aligns with and may even support NR's values and goals.
 
 NoReplacement's Net, in combination with Betanet, acts as a robust index of many various connected services and facilitates data exchange, archival and decentralized, validated object storage between those services.  
-
-## Issues
-
-- 
