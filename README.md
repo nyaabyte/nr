@@ -1,5 +1,8 @@
 # NoReplacement <br/> <img alt="NoReplacement Protocol Logo" src="assets/nr.png" width="100">
 
+### Repo privated again, I need to make the specs make sense and add more detail. Since most of this was glued together with GPT5 I will have to do a multi week audit and rework but the general concept should still remain the same.
+I aim to also add verbosely defined documentation regarding “Sybil heuristics” and what metadata should be stored about nodes plus define the census voting threshold and requirements and less complex language. Since this is a big overhaul... Expect it to take a long time. In the meantime I hope another NB member hops on the gravy train to start piecing together LibNR with me so I can inevitably make a YouTube clone and get [pop-you-ler](https://youtu.be/rpFXOD_olvY).
+
 **Federal law is NoReplacement for parenting.**
 
 NoReplacement (`NR`) is a general-purpose decentralized network that aims to be extremely resistant to tampering, snooping and censorship through comprehensive generic data transport capabilities.  
